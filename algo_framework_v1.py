@@ -1,8 +1,4 @@
-import math
-import numpy as np
-import pandas as pd
-from typing import Dict, List
-from datamodel import Listing, OrderDepth, Trade, TradingState, Order
+# defining position limits of assets
 
 position_limit_pearls = 20
 position_limit_bananas = 20
@@ -18,6 +14,8 @@ position_limit_dip = 300
 position_limit_ukulele = 70
 position_limit_picnic = 70
 
+#
+
 
 def price_vol_extractor(structure, df):
 
@@ -25,90 +23,17 @@ def price_vol_extractor(structure, df):
         for order_price in structure.keys():
             new_row = pd.Series([order_price, structure[order_price]], index=[
                                 'price', 'volume'])
-            # axis = 0 for rows not 1 (corrected)
-            df = df.concat(new_row, axis=0, ignore_index=True)
+            df = pd.concat([df, new_row], ignore_index=True)
 
-    elif type(structure) == Trade:
+    else:
         for item in structure:
             new_row = pd.Series([item.price, item.quantity],
                                 index=['price', 'volume'])
-            df = df.concat(new_row, axis=0, ignore_index=True)
-
-    else:
-        raise RaiseError(f"Unknown structure detected: {structure}")
+            df = pd.concat([df, new_row], ignore_index=True)
 
     return df
 
-
-# r1
-def pearls_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    # mean reversion based strategy
-    prices = df_bid_ask.price
-    volumes = df_bid_ask.volume.abs()
-
-    avg_mean_price = sum(prices * volumes) / (volumes.sum())
-    avg_variance = sum(prices ** 2 * volumes) / \
-        (volumes.sum()) - av_mean_price ** 2
-
-    # 0.4?
-    acceptable_ask_price = avg_mean_price + 0.4 * np.sqrt(avg_variance)
-    acceptable_bid_price = avg_mean_price - 0.4 * np.sqrt(avg_variance)
-
-    return acceptable_ask_price, acceptable_bid_price
-
-
-def bananas_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    # strategy?
-    prices = df_bid_ask.price
-    volumes = df_bid_ask.volume
-
-    x = np.array(prices).astype(str).astype(float)
-    y = np.array(volumes).astype(str).astype(float)
-    slope, intercept = np.polyfit(x, y, 1)
-
-    # why are both the same?
-    acceptable_ask_price = -intercept / slope
-    acceptable_bid_price = -intercept / slope
-
-    return acceptable_ask_price, acceptable_bid_price
-
-# r2
-
-
-def pina_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-
-def coconuts_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-# r3
-
-
-def diving_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-
-def berries_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-# r4
-
-
-def baguette_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-
-def dip_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-
-def ukulele_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
-
-
-def picnic_fv(df_bid_ask: pd.DataFrame, df_trades: pd.DataFrame):
-    pass
+#
 
 
 def fair_value(product, df_bid_ask):
@@ -166,6 +91,8 @@ def fair_value(product, df_bid_ask):
 
     return (acceptable_price_ask, acceptable_price_bid, position_limit)
 
+#
+
 
 class Trader:
 
@@ -176,7 +103,7 @@ class Trader:
 
         output_orders = {}
 
-        for product in state.order_depths[product]:
+        for product in state.order_depths.keys():
 
             order_depth = state.order_depths[product]
             market_trades = state.market_trades[product]
@@ -186,9 +113,9 @@ class Trader:
 
             # creating dataframes to store TradingState price-volume data
             df_bid_ask = pd.DataFrame(columns=[
-                                      'price_' + product.split('_').lower(), 'volume_' + product.split('_').lower()])
+                                      'price_' + product.split('_')[0].lower(), 'volume_' + product.split('_')[0].lower()])
             df_trades = pd.DataFrame(columns=[
-                                     'price_' + product.split('_').lower(), 'volume_' + product.split('_').lower()])
+                                     'price_' + product.split('_')[0].lower(), 'volume_' + product.split('_')[0].lower()])
 
             # filling dataframe with latest TradingState price-volume data
             try:
@@ -220,8 +147,8 @@ class Trader:
                     order_depth.sell_orders[best_ask]  # as qty -ve
 
                 # checking for feasibility of price and position limit
-                # !!!!!!!!!!!!!!!!!!!!(while or if)
-                if ((best_ask < acceptable_price_bid)):
+                # while in place of if to accomodate multiple orders at favourable price
+                while (best_ask < acceptable_price_bid):
 
                     # if we DON'T hold the product previously in any amount
                     if (product not in state.position.keys()):
@@ -229,7 +156,7 @@ class Trader:
                     else:
                         old_positon = state.position[product]
 
-                    if (np.absolute(best_ask_volume + old_positon) <= position_limit):
+                    if (np.absolute(best_ask_volume + old_position) <= position_limit):
                         # placing full buy order
                         print("BUY", str(best_ask_volume) + 'x', best_ask)
                         orders.append(
@@ -250,9 +177,16 @@ class Trader:
                     if order_depth.sell_orders[best_ask] == 0:
                         order_depth.sell_orders.pop(best_ask)
 
-                    #!!!!!!!!!! don't we need to update the order depth for buys
-                else:
-                    print('Market is selling at a premium')
+                    # finding the cheapest option to buy
+                    try:
+                        best_ask = min(order_depth.sell_orders.keys())
+                        best_ask_volume = - \
+                            order_depth.sell_orders[best_ask]  # as qty -ve
+
+                    except:
+                        break
+                    #!!!!!!!!!! don't we need to update the order depth for buys (reflected in the next trading state)
+                print('Market is selling at a premium')
 
             except:
                 raise RaiseError("No sell orders in the market currently")
@@ -265,8 +199,7 @@ class Trader:
                 best_bid_volume = order_depths.buy_orders[best_bid]
 
                 # checking for feasibility of price and position limit
-                # !!!!!!!!!!!!!!!!!!!! (while or if)
-                if ((best_bid > acceptable_price_ask)):
+                while (best_bid > acceptable_price_ask):
 
                     # if we DON'T hold the product previously in any amount
                     if (product not in state.position.keys()):
@@ -292,17 +225,22 @@ class Trader:
                             Order(product, best_ask, -(position_limit - old_positon)))
                         state.position[product] = -position_limit
 
-                # updating the order depth for sells(as reduced from open market)
-                order_depth.buy_orders[best_bid] += orders[-1].quantity
-                if order_depth.buy_orders[best_bid] == 0:
-                    order_depth.buy_orders.pop(best_bid)
+                    # updating the order depth for sells(as reduced from open market)
+                    order_depth.buy_orders[best_bid] += orders[-1].quantity
+                    if order_depth.buy_orders[best_bid] == 0:
+                        order_depth.buy_orders.pop(best_bid)
 
-                #!!!!!!!!!! don't we need to update the order depth for buys
-                else:
-                    print('Market is buying at a premium')
+                    try:
+                        # finding the cheapest option to buy
+                        best_bid = max(order_depths.buy_orders.keys())
+                        # as qty +ve
+                        best_bid_volume = order_depths.buy_orders[best_bid]
+                    except:
+                        break
+
+                print('Market is buying at a premium')
             except:
                 raise RaiseError("No buy orders in the market currently")
 
             output_orders[product] = orders
-
         return output_orders
